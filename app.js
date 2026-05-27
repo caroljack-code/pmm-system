@@ -174,7 +174,7 @@ if (authToken) {
     loadBrandLogo();
     loadBrandLogo();
     if (barcodeInput) {
-        barcodeInput.focus();
+        safeFocus(barcodeInput);
     }
     if (paymentMethodEl) {
         const v = paymentMethodEl.value;
@@ -203,6 +203,20 @@ function updateRefPlaceholder(method) {
 }
 
 // API Helper
+const isMobile = () => 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+
+function safeFocus(el, force = false) {
+    if (!el) return;
+    // On mobile, avoid focusing the barcode input automatically as it pops the keyboard and jumps
+    if (isMobile() && el === barcodeInput && !force) return;
+    
+    try {
+        el.focus({ preventScroll: true });
+    } catch (e) {
+        el.focus(); // Fallback for very old browsers
+    }
+}
+
 async function apiCall(url, options = {}) {
     const headers = {
         'Content-Type': 'application/json',
@@ -218,18 +232,20 @@ async function apiCall(url, options = {}) {
     try {
         response = await fetch(fullUrl, { ...options, headers });
     } catch (e) {
+        console.error(`Fetch failed for ${fullUrl}:`, e);
+        // If it was an absolute URL that failed, try the relative one as fallback
         if (url.startsWith('/api/') && API_BASE) {
             try {
                 response = await fetch(url, { ...options, headers });
             } catch (e2) {
-                throw e;
+                throw e; // Throw the original error
             }
         } else {
             throw e;
         }
     }
     
-    if (response.status === 401) {
+    if (response && response.status === 401) {
         // Token expired or invalid
         authToken = null;
         localStorage.removeItem('pos_token');
@@ -418,44 +434,49 @@ window.addCategory = async function() {
 window.switchTab = function(tabName) {
     const allowed = getAllowedTabs(userRole);
     if (!allowed.includes(tabName)) tabName = 'pos';
-    document.querySelectorAll('.view-section').forEach(el => el.style.display = 'none');
-    document.querySelectorAll('.view-section').forEach(el => el.classList.remove('active'));
+    
+    // Hide all view sections
+    document.querySelectorAll('.view-section').forEach(el => {
+        el.style.display = 'none';
+        el.classList.remove('active');
+    });
+    
+    // Remove active class from all nav items
     document.querySelectorAll('.nav-links li').forEach(el => el.classList.remove('active'));
     
+    // Show selected view
+    const viewEl = document.getElementById(tabName + '-view');
+    if (viewEl) {
+        viewEl.style.display = (tabName === 'pos') ? 'flex' : 'block';
+        viewEl.classList.add('active');
+    }
+    
+    // Set active class on nav item
+    const navEl = document.getElementById('nav-' + tabName);
+    if (navEl) {
+        navEl.classList.add('active');
+    }
+    
+    // Tab specific actions
     if (tabName === 'pos') {
-        document.getElementById('pos-view').style.display = 'flex';
-        document.getElementById('pos-view').classList.add('active');
-        document.querySelector('.nav-links li:nth-child(1)').classList.add('active');
         fetchProducts();
         if (barcodeInput) {
-            barcodeInput.focus();
+            safeFocus(barcodeInput);
         }
         if (userRole === 'admin') {
             fetchLowStockAlerts();
         }
     } else if (tabName === 'reports') {
-        document.getElementById('reports-view').style.display = 'block';
-        document.getElementById('reports-view').classList.add('active');
-        document.querySelector('.nav-links li:nth-child(2)').classList.add('active');
         fetchDailyReport();
-    } else if (tabName === 'backups') {
-        document.getElementById('backups-view').style.display = 'block';
-        document.getElementById('backups-view').classList.add('active');
-        document.querySelector('.nav-links li:nth-child(3)').classList.add('active');
     } else if (tabName === 'inventory') {
-        document.getElementById('inventory-view').style.display = 'block';
-        document.getElementById('inventory-view').classList.add('active');
-        document.querySelector('.nav-links li:nth-child(4)').classList.add('active');
         fetchInventory();
     } else if (tabName === 'users') {
-        document.getElementById('users-view').style.display = 'block';
-        document.getElementById('users-view').classList.add('active');
-        document.querySelector('.nav-links li:nth-child(5)').classList.add('active');
         fetchUsers();
         fetchBanksAdmin();
     }
+    
+    // Update mobile nav if it exists
     document.querySelectorAll('#mobile-bottom-nav button').forEach(btn => {
-        // Hide buttons not allowed for role
         btn.style.display = allowed.includes(btn.dataset.tab) ? '' : 'none';
         if (btn.dataset.tab === tabName) btn.classList.add('active');
         else btn.classList.remove('active');
@@ -844,26 +865,35 @@ window.changeMyPassword = async function() {
 // Fetch products from API
 async function fetchProducts() {
     try {
-        let response = await apiCall('/api/pos/products');
-        if (!response || response.status === 404 || response.status === 405) {
+        let response;
+        try {
+            response = await apiCall('/api/pos/products');
+        } catch (e) {
+            console.warn('Primary products fetch failed, trying fallback...', e);
             response = await apiCall('/api/products');
         }
+
+        if (!response.ok) {
+            const result = await response.json().catch(() => ({}));
+            const msg = result.error || result.message || `HTTP ${response.status}`;
+            productsListEl.innerHTML = `<p class="error">Server Error: ${msg}</p>`;
+            return;
+        }
+
         const result = await response.json();
-        if (response.ok && result.message === 'success') {
+        if (result.message === 'success') {
             products = result.data;
             renderProducts(products);
             if (userRole === 'admin') {
                 fetchLowStockAlerts();
             }
         } else {
-            const msg = result.error || result.message || `HTTP ${response.status}`;
-            productsListEl.innerHTML = `<p class="error">Failed to load products: ${msg}</p>`;
+            productsListEl.innerHTML = `<p class="error">Failed to load products: ${result.message || 'Unknown error'}</p>`;
         }
     } catch (error) {
         console.error('Error fetching products:', error);
-        // Only show error if not auth error (handled by apiCall)
         if (error.message !== 'Unauthorized') {
-             productsListEl.innerHTML = '<p class="error">Failed to load products. Make sure server is running.</p>';
+             productsListEl.innerHTML = `<p class="error">Connection Error: Could not connect to the server. Please ensure the backend is running at ${API_BASE || 'the same origin'}.</p>`;
         }
     }
 }
@@ -906,10 +936,10 @@ function renderProducts(productsToRender) {
         const imgHtml = currentImageUrl ? `<img id="img-${product.id}" src="${currentImageUrl}" alt="${product.name}" style="width:100%;height:160px;object-fit:cover;border-radius:12px;margin-bottom:8px;">` : `<div id="img-${product.id}"></div>`;
         
         const adminControls = (userRole === 'admin' || userRole === 'super_admin' || userRole === 'assistant')
-            ? `<div style="display:flex;gap:8px;margin-top:8px;">
-                   <button onclick="setProductImage(${product.id})" class="secondary-btn" style="padding:6px 10px;">Set Image</button>
-                   ${product.image_url ? `<button onclick="removeProductImage(${product.id})" class="secondary-btn danger" style="padding:6px 10px;">Remove</button>` : ''}
-                   <button onclick="openVariants(${product.id}, '${String(product.name).replace(/'/g, "\\'")}')" class="secondary-btn" style="padding:6px 10px;">Add Variants</button>
+            ? `<div class="admin-controls">
+                   <button onclick="setProductImage(${product.id})" class="secondary-btn">Set Image</button>
+                   ${product.image_url ? `<button onclick="removeProductImage(${product.id})" class="secondary-btn danger">Remove</button>` : ''}
+                   <button onclick="openVariants(${product.id}, '${String(product.name).replace(/'/g, "\\'")}')" class="secondary-btn">Add Variants</button>
                </div>`
             : '';
 
@@ -1426,6 +1456,7 @@ async function apiBarcodeLookup(code) {
             }
             if (p.stock > 0) {
                 addToCart(p.id);
+                safeFocus(barcodeInput, true); // Ensure focus for next scan
             }
         }
     } catch (e) {
@@ -1438,15 +1469,16 @@ if (barcodeInput) {
         if (e.key === 'Enter') {
             processBarcode(barcodeInput.value);
             barcodeInput.value = '';
-            barcodeInput.focus();
+            safeFocus(barcodeInput, true); // Force refocus after enter
         }
     });
     barcodeInput.addEventListener('blur', () => {
+        if (isMobile()) return; // Disable auto-refocus on mobile
         setTimeout(() => {
             const el = document.activeElement;
             const tag = (el && el.tagName || '').toLowerCase();
             const isInputLike = tag === 'input' || tag === 'textarea' || tag === 'select' || (el && el.isContentEditable);
-            if (!isInputLike) barcodeInput.focus();
+            if (!isInputLike) safeFocus(barcodeInput);
         }, 0);
     });
 }
@@ -1778,7 +1810,7 @@ function ensureBarcodeFocus() {
         const tag = (el && el.tagName || '').toLowerCase();
         const isInputLike = tag === 'input' || tag === 'textarea' || (el && el.isContentEditable);
         if (!isInputLike || el === barcodeInput) {
-            barcodeInput.focus();
+            safeFocus(barcodeInput);
         }
     }
 }
@@ -1792,7 +1824,7 @@ document.addEventListener('keydown', (e) => {
     if (!isBarcodeFocused && !isInputLike) {
         if (e.key.length === 1 && /[0-9A-Za-z]/.test(e.key)) {
             e.preventDefault();
-            barcodeInput.focus();
+            safeFocus(barcodeInput, true); // Force focus when user starts typing
             barcodeInput.value += e.key;
         } else if (e.key === 'Enter') {
             e.preventDefault();
@@ -1801,7 +1833,7 @@ document.addEventListener('keydown', (e) => {
                 processBarcode(val);
                 barcodeInput.value = '';
             }
-            barcodeInput.focus();
+            safeFocus(barcodeInput, true); // Force refocus
         }
     }
 });

@@ -785,6 +785,34 @@ body {
     color: var(--text-primary);
 }
 
+.admin-controls {
+    display: flex;
+    gap: 0.5rem;
+    margin-top: 0.75rem;
+    flex-wrap: wrap;
+}
+
+.admin-controls button {
+    flex: 1;
+    min-width: fit-content;
+    padding: 0.5rem 0.75rem !important;
+    font-size: 0.8rem !important;
+    white-space: nowrap;
+    border-radius: var(--radius-md);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.secondary-btn.danger {
+    color: var(--danger-color);
+    border-color: #fee2e2;
+}
+
+.secondary-btn.danger:hover {
+    background-color: #fef2f2;
+}
+
 /* Custom Scrollbar for better touch experience */
 ::-webkit-scrollbar {
     width: 12px;
@@ -961,6 +989,16 @@ button:active, .nav-links li:active, .product-card:active {
 
     .product-card h3 {
         font-size: 0.9rem;
+    }
+
+    .admin-controls {
+        gap: 0.35rem;
+    }
+
+    .admin-controls button {
+        padding: 0.4rem 0.5rem !important;
+        font-size: 0.75rem !important;
+        min-width: calc(50% - 0.35rem); /* Force 2 per row on mobile if they wrap */
     }
 
     .cart-section {

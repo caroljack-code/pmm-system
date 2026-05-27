@@ -265,7 +265,10 @@ def init_db():
     conn.close()
 
 # Initialize DB
-init_db()
+try:
+    init_db()
+except Exception as e:
+    print(f"CRITICAL ERROR during database initialization: {e}")
 
 # --- Auth Helpers ---
 
@@ -668,16 +671,20 @@ def add_category():
 @app.route('/api/products', methods=['GET']) # Alias for frontend compatibility
 @token_required
 def get_products():
-    conn = get_db_connection()
-    products = conn.execute('SELECT * FROM products').fetchall()
-    conn.close()
-    data = []
-    for ix in products:
-        d = dict(ix)
-        thr = d.get('low_stock_threshold')
-        d['low_stock'] = thr is not None and d.get('stock', 0) <= int(thr)
-        data.append(d)
-    return jsonify({"message": "success", "data": data})
+    try:
+        conn = get_db_connection()
+        products = conn.execute('SELECT * FROM products').fetchall()
+        conn.close()
+        data = []
+        for ix in products:
+            d = dict(ix)
+            thr = d.get('low_stock_threshold')
+            d['low_stock'] = thr is not None and d.get('stock', 0) <= int(thr)
+            data.append(d)
+        return jsonify({"message": "success", "data": data})
+    except Exception as e:
+        print(f"Error in get_products: {e}")
+        return jsonify({"error": str(e)}), 500
 
 @app.route('/products/barcode/<barcode>', methods=['GET'])
 @app.route('/api/products/barcode/<barcode>', methods=['GET'])
@@ -691,20 +698,23 @@ def get_product_by_barcode(barcode):
     return jsonify({"error": "Product not found"}), 404
 
 # POS-friendly products endpoint (explicitly allows all authenticated roles)
-@app.route('/pos/products', methods=['GET'])
 @app.route('/api/pos/products', methods=['GET'])
 @token_required
 def get_products_for_pos():
-    conn = get_db_connection()
-    products = conn.execute('SELECT * FROM products').fetchall()
-    conn.close()
-    data = []
-    for ix in products:
-        d = dict(ix)
-        thr = d.get('low_stock_threshold')
-        d['low_stock'] = thr is not None and d.get('stock', 0) <= int(thr)
-        data.append(d)
-    return jsonify({"message": "success", "data": data})
+    try:
+        conn = get_db_connection()
+        products = conn.execute('SELECT * FROM products').fetchall()
+        conn.close()
+        data = []
+        for ix in products:
+            d = dict(ix)
+            thr = d.get('low_stock_threshold')
+            d['low_stock'] = thr is not None and d.get('stock', 0) <= int(thr)
+            data.append(d)
+        return jsonify({"message": "success", "data": data})
+    except Exception as e:
+        print(f"Error in get_products_for_pos: {e}")
+        return jsonify({"error": str(e)}), 500
 
 @app.route('/api/products', methods=['POST'])
 @token_required
@@ -1562,6 +1572,33 @@ def export_products_csv():
     finally:
         conn.close()
 if __name__ == '__main__':
-    host = os.environ.get('POS_BIND_HOST', '0.0.0.0')
+    # Use 127.0.0.1 as the absolute primary for Windows stability
     port = int(os.environ.get('POS_PORT', '5000'))
-    app.run(host=host, port=port)
+    
+    # We try these specific addresses in order
+    hosts_to_try = ['127.0.0.1', 'localhost', '0.0.0.0']
+    
+    success = False
+    for h in hosts_to_try:
+        print(f"--- Attempting to start server on {h}:{port} ---")
+        try:
+            # We use use_reloader=False to avoid double-binding crashes on Windows
+            app.run(host=h, port=port, threaded=True, use_reloader=False)
+            success = True
+            break
+        except Exception as e:
+            print(f"FAILED on {h}: {str(e)}")
+            continue
+        except:
+            print(f"CRITICAL ERROR on {h}")
+            continue
+            
+    if not success:
+        print("\n******************************************************")
+        print(" ERROR: The POS server could not start.")
+        print(" This usually happens if your Firewall is blocking it.")
+        print(" Please allow 'python.exe' through your Firewall.")
+        print("******************************************************")
+        import time
+        time.sleep(10)
+        sys.exit(1)
