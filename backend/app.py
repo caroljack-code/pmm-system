@@ -1008,10 +1008,10 @@ def create_sale():
     
     if not items:
         return jsonify({"error": "No items in sale"}), 400
-    allowed_methods = {'cash', 'mpesa', 'bank', 'card', 'cheque', 'credit'}
+    allowed_methods = {'cash', 'mpesa', 'bank', 'card', 'cheque', 'credit', 'jumia'}
     if payment_method not in allowed_methods:
         return jsonify({"error": "Invalid payment method"}), 400
-    if payment_method in {'mpesa', 'bank', 'card', 'cheque', 'credit'} and payment_reference is not None:
+    if payment_method in {'mpesa', 'bank', 'card', 'cheque', 'credit', 'jumia'} and payment_reference is not None:
         payment_reference = str(payment_reference).strip() or None
 
     conn = get_db_connection()

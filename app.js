@@ -178,7 +178,7 @@ if (authToken) {
     }
     if (paymentMethodEl) {
         const v = paymentMethodEl.value;
-        const needsRef = ['mpesa', 'card', 'cheque'].includes(v);
+        const needsRef = ['mpesa', 'card', 'cheque', 'jumia'].includes(v);
         if (paymentRefRow) paymentRefRow.style.display = needsRef ? '' : 'none';
         if (bankSelectRow) bankSelectRow.style.display = v === 'bank' ? '' : 'none';
         if (v === 'bank') loadBanksForPayment();
@@ -199,6 +199,7 @@ function updateRefPlaceholder(method) {
     else if (method === 'bank') paymentRefEl.placeholder = 'Transaction Ref';
     else if (method === 'card') paymentRefEl.placeholder = 'Last 4 Digits / Ref';
     else if (method === 'cheque') paymentRefEl.placeholder = 'Cheque Number';
+    else if (method === 'jumia') paymentRefEl.placeholder = 'Jumia Order No / Ref';
     else paymentRefEl.placeholder = 'Reference';
 }
 
@@ -2044,7 +2045,7 @@ window.selectPayment = function(method) {
     });
 
     // Update reference field visibility
-    const needsRef = ['mpesa', 'card', 'cheque'].includes(method);
+    const needsRef = ['mpesa', 'card', 'cheque', 'jumia'].includes(method);
     if (paymentRefRow) paymentRefRow.style.display = needsRef ? 'flex' : 'none';
     if (bankSelectRow) bankSelectRow.style.display = method === 'bank' ? 'flex' : 'none';
     if (method === 'bank') loadBanksForPayment();
